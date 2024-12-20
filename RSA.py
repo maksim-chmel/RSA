@@ -1,4 +1,5 @@
 import os
+import zipfile
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 from cryptography.hazmat.backends import default_backend
@@ -7,6 +8,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa, padding
 
 PRIVATE_KEY_FILE = "private_key.pem"
 PUBLIC_KEY_FILE = "public_key.pem"
+INSTRUCTIONS_FILE = "instructions.txt"
 private_key_path = None
 public_key_path = None
 
@@ -73,18 +75,27 @@ def validate_document(document_path):
     return True
 
 
-def ask_for_password(prompt="Enter password"):
-    password = simpledialog.askstring("Password", prompt, show='*')
-    return password
+def create_instructions(file_path):
+    instructions = (
+        "To verify the authenticity of the signed document:\n"
+        "1. Use the provided public key file (public_key.pem).\n"
+        "2. Use a signature verification tool to check the validity of the signature.\n"
+        "3. Provide the following files:\n"
+        "   - The original document.\n"
+        "   - The signature file.\n"
+        "   - The public key.\n"
+    )
+    with open(file_path, "w") as f:
+        f.write(instructions)
 
 
 def sign_document_command():
-    # Выбор документа для подписи
+
     document_path = filedialog.askopenfilename(title="Select Document to Sign")
     if not document_path or not validate_document(document_path):
         return
 
-    # Выбор приватного ключа
+
     private_key_file = filedialog.askopenfilename(
         title="Select Private Key",
         filetypes=[("PEM Files", "*.pem"), ("All Files", "*.*")]
@@ -92,25 +103,26 @@ def sign_document_command():
     if not private_key_file:
         return
 
-    # Выбор имени файла для сохранения подписи
-    output_path = filedialog.asksaveasfilename(title="Save Signature As")
-    if not output_path:
+
+    public_key_file = filedialog.askopenfilename(
+        title="Select Public Key",
+        filetypes=[("PEM Files", "*.pem"), ("All Files", "*.*")]
+    )
+    if not public_key_file:
         return
 
-    # Запрос пароля для расшифровки приватного ключа
     password = ask_for_password("Enter the password for private key decryption: ")
     if password:
         try:
-            # Загрузка приватного ключа
+
             private_key = load_private_key(private_key_file, password)
             if not private_key:
                 return
 
-            # Чтение документа
             with open(document_path, 'rb') as f:
                 document = f.read()
 
-            # Создание подписи
+
             signature = private_key.sign(
                 document,
                 padding.PSS(
@@ -120,11 +132,27 @@ def sign_document_command():
                 hashes.SHA256()
             )
 
-            # Сохранение подписи
-            with open(output_path, 'wb') as f:
+            signature_path = f"{document_path}.sig"
+            with open(signature_path, 'wb') as f:
                 f.write(signature)
 
-            messagebox.showinfo("Success", "Document signed successfully.")
+            instructions_path = os.path.join(os.path.dirname(document_path), INSTRUCTIONS_FILE)
+            create_instructions(instructions_path)
+
+            document_dir = os.path.dirname(document_path)
+            archive_name = os.path.splitext(os.path.basename(document_path))[0] + "_signed.zip"
+            archive_path = os.path.join(document_dir, archive_name)
+
+            with zipfile.ZipFile(archive_path, 'w') as zipf:
+                zipf.write(document_path, os.path.basename(document_path))
+                zipf.write(signature_path, os.path.basename(signature_path))
+                zipf.write(public_key_file, os.path.basename(public_key_file))
+                zipf.write(instructions_path, os.path.basename(instructions_path))
+
+            os.remove(signature_path)
+            os.remove(instructions_path)
+
+            messagebox.showinfo("Success", f"Document signed and packaged successfully.\nArchive saved at: {archive_path}")
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to sign document: {e}")
@@ -191,14 +219,19 @@ def generate_keys_command():
         generate_keys(key_path, password)
 
 
+def ask_for_password(prompt="Enter password"):
+    password = simpledialog.askstring("Password", prompt, show='*')
+    return password
+
+
 def main():
     root = tk.Tk()
-    root.title("Digital Signature")
+    root.title("Digital Signature with Archiving")
 
     generate_keys_button = tk.Button(root, text="Generate Keys", command=generate_keys_command)
     generate_keys_button.pack(pady=5)
 
-    sign_document_button = tk.Button(root, text="Sign Document", command=sign_document_command)
+    sign_document_button = tk.Button(root, text="Sign Document and Create Archive", command=sign_document_command)
     sign_document_button.pack(pady=5)
 
     verify_signature_button = tk.Button(root, text="Verify Signature", command=verify_signature_command)
