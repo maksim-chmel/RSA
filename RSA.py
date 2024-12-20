@@ -5,6 +5,7 @@ from tkinter import filedialog, messagebox, simpledialog
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
+import pyzipper
 
 PRIVATE_KEY_FILE = "private_key.pem"
 PUBLIC_KEY_FILE = "public_key.pem"
@@ -95,14 +96,12 @@ def sign_document_command():
     if not document_path or not validate_document(document_path):
         return
 
-
     private_key_file = filedialog.askopenfilename(
         title="Select Private Key",
         filetypes=[("PEM Files", "*.pem"), ("All Files", "*.*")]
     )
     if not private_key_file:
         return
-
 
     public_key_file = filedialog.askopenfilename(
         title="Select Public Key",
@@ -114,14 +113,12 @@ def sign_document_command():
     password = ask_for_password("Enter the password for private key decryption: ")
     if password:
         try:
-
             private_key = load_private_key(private_key_file, password)
             if not private_key:
                 return
 
             with open(document_path, 'rb') as f:
                 document = f.read()
-
 
             signature = private_key.sign(
                 document,
@@ -143,11 +140,17 @@ def sign_document_command():
             archive_name = os.path.splitext(os.path.basename(document_path))[0] + "_signed.zip"
             archive_path = os.path.join(document_dir, archive_name)
 
-            with zipfile.ZipFile(archive_path, 'w') as zipf:
+
+            zip_password = ask_for_password("Enter password to encrypt the ZIP archive: ")
+
+
+            with pyzipper.AESZipFile(archive_path, mode='w', encryption=pyzipper.WZ_AES) as zipf:
+                zipf.setpassword(zip_password.encode())  # Set password for encryption
                 zipf.write(document_path, os.path.basename(document_path))
                 zipf.write(signature_path, os.path.basename(signature_path))
                 zipf.write(public_key_file, os.path.basename(public_key_file))
                 zipf.write(instructions_path, os.path.basename(instructions_path))
+
 
             os.remove(signature_path)
             os.remove(instructions_path)
@@ -222,6 +225,7 @@ def generate_keys_command():
 def ask_for_password(prompt="Enter password"):
     password = simpledialog.askstring("Password", prompt, show='*')
     return password
+
 
 def main():
     root = tk.Tk()
