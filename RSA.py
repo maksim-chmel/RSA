@@ -223,7 +223,6 @@ def ask_for_password(prompt="Enter password"):
     password = simpledialog.askstring("Password", prompt, show='*')
     return password
 
-
 def main():
     root = tk.Tk()
     root.title("Digital Signature with Archiving")
